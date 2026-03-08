@@ -1,4 +1,4 @@
-# Kronecker Products Utilities
+# Matrix Vectorization and Kronecker Products
 
 `kronutils.py` is a pure-NumPy utility library for matrix vectorization operators and Kronecker-product variants. It provides implementations of the standard column-wise vectorization (`vec`), half-vectorization (`vech`), diagonal vectorization (`vecd`), and block vectorization (`vecb`), together with the Kronecker, Khatri-Rao, Hadamard, block Kronecker (Tracy–Singh), and block Khatri-Rao matrix products, as well as the block diagonal (direct sum) construction and the commutation matrix. All functions accept NumPy arrays or nested Python lists.
 
