@@ -1,7 +1,7 @@
 """
 Author: Ziad (https://github.com/ziadhatab)
 
-A collection of utility functions for matrix vectorization and Kronecker-product variants.
+A collection of utility functions for matrix vectorization and Kronecker products.
 """
 
 import numpy as np
@@ -120,6 +120,34 @@ def vec(A):
     A = np.atleast_2d(A)
     return A.flatten(order='F')
 
+def unvec(v, shape):
+    """
+    Inverse of column-wise vectorization. Reshapes a vector back into a matrix.
+
+    Parameters
+    ----------
+    v : np.ndarray or list
+        The vector to be unvectorized.
+    shape : tuple of int
+        The shape (rows, cols) of the output matrix.
+
+    Returns
+    -------
+    np.ndarray
+        The unvectorized matrix of the specified shape.
+
+    References
+    ----------
+    - https://en.wikipedia.org/wiki/Vectorization_(mathematics)
+    - K. B. Petersen and M. S. Pedersen, “The Matrix Cookbook.” 
+    Technical University of Denmark, Nov. 2012. 
+    [Online]. Available: http://www2.compute.dtu.dk/pubdb/pubs/3274-full.html
+    - J. Brewer, "Kronecker products and matrix calculus in system theory," 
+    in IEEE Transactions on Circuits and Systems, vol. 25, no. 9, pp. 772-781, 
+    September 1978, doi: 10.1109/TCS.1978.1084534.
+    """
+    return np.reshape(v, shape, order='F')
+
 def vech(A):
     """
     Half-vectorization of a symmetric matrix.
@@ -149,6 +177,39 @@ def vech(A):
         raise ValueError(f"vech requires a square matrix, but got shape {A.shape}.")    
     return A[np.tril_indices_from(A)]
 
+def unvech(v, N):
+    """
+    Inverse of half-vectorization. Reshapes a vector back into a symmetric matrix.
+
+    Parameters
+    ----------
+    v : np.ndarray or list
+        The vector to be converted into a symmetric matrix.
+    N : int
+        The size (number of rows/columns) of the output symmetric matrix.
+
+    Returns
+    -------
+    np.ndarray
+        The symmetric matrix of the specified size.
+    
+    References
+    ----------
+    - https://en.wikipedia.org/wiki/Vectorization_(mathematics)
+    - K. G. Jinadasa, “Applications of the matrix operators vech and vec,” 
+    Linear Algebra and its Applications, vol. 101, pp. 73–79, 1988, 
+    doi: https://doi.org/10.1016/0024-3795(88)90143-7.
+    - D. Nagakura, “Further results on the vecd operator and its applications,” 
+    Communications in Statistics - Theory and Methods, vol. 49, no. 10, pp. 2321–2338, 2020, 
+    doi: 10.1080/03610926.2019.1570265.
+    """
+    v = np.atleast_1d(v)
+    A = np.zeros((N, N), dtype=v.dtype)
+    tril_indices = np.tril_indices(N)
+    A[tril_indices] = v
+    A = A + A.T - np.diag(vecd(A))  # Make symmetric by adding transpose and removing double-counted diagonal
+    return A
+
 def vecd(A):
     """
     Diagonal vectorization of a matrix.
@@ -171,6 +232,29 @@ def vecd(A):
     """
     A = np.atleast_2d(A)
     return np.diag(A)
+
+def unvecd(v):
+    """
+    Inverse of diagonal vectorization. Reshapes a vector back into a diagonal matrix.
+
+    Parameters
+    ----------
+    v : np.ndarray or list
+        The vector to be converted into a diagonal matrix.
+
+    Returns
+    -------
+    np.ndarray
+        The diagonal matrix of the specified size.
+    
+    References
+    ----------
+    - J. Brewer, "Kronecker products and matrix calculus in system theory," 
+    in IEEE Transactions on Circuits and Systems, vol. 25, no. 9, pp. 772-781, 
+    September 1978, doi: 10.1109/TCS.1978.1084534.
+    """
+    v = np.atleast_1d(v)
+    return np.diag(v)
 
 def vecb(A, block_size_row, block_size_col):
     """
@@ -205,6 +289,98 @@ def vecb(A, block_size_row, block_size_col):
     n = len(block_size_col)
     A_blocks = extract_blocks(A, block_size_row, block_size_col)
     return np.concatenate([vec(A_blocks[i][j]) for j in range(n) for i in range(m)])
+
+def unvecb(v, block_size_row, block_size_col):
+    """
+    Inverse of block vectorization. Reshapes a vector back into a matrix with specified block structure.
+
+    Parameters
+    ----------
+    v : np.ndarray or list
+        The vector to be converted into a matrix.
+    block_size_row : list of int
+        The height of each row block. len(block_size_row) is the number of row blocks.
+    block_size_col : list of int
+        The width of each column block. len(block_size_col) is the number of column blocks.
+
+    Returns
+    -------
+    np.ndarray
+        The matrix of the specified block structure.
+
+    References
+    ----------
+    - R. H. Koning, H. Neudecker, and T. Wansbeek, 
+    “Block Kronecker products and the vecb operator,” 
+    Linear Algebra and its Applications, vol. 149, pp. 165–184, 1991, 
+    doi: https://doi.org/10.1016/0024-3795(91)90332-Q.
+    - D. S. Tracy, “Balanced partitioned matrices and their Kronecker products,” 
+    Computational Statistics & Data Analysis, vol. 10, no. 3, pp. 315–323, 1990, 
+    doi: https://doi.org/10.1016/0167-9473(90)90013-8.
+    """
+    m = len(block_size_row)
+    n = len(block_size_col)
+    A_blocks = [[None for j in range(n)] for i in range(m)]
+    
+    idx = 0
+    for j in range(n):
+        for i in range(m):
+            block_rows = block_size_row[i]
+            block_cols = block_size_col[j]
+            block_size = block_rows * block_cols
+            A_blocks[i][j] = unvec(v[idx:idx+block_size], (block_rows, block_cols))
+            idx += block_size
+
+    return np.block([[A_blocks[i][j] for j in range(n)] for i in range(m)])
+
+def vecdb(A, block_size):
+    """
+    Block diagonal vectorization of a matrix.
+
+    Parameters
+    ----------
+    A : np.ndarray or list
+        The matrix to be block diagonal vectorized.
+    block_size: list of int
+        The height/width of each block (square). len(block_size) is the number of blocks.
+    
+    Returns
+    -------
+    np.ndarray
+        The block diagonal vectorized form of the input matrix.
+    """
+    A = np.atleast_2d(A)
+    n = len(block_size)
+    A_blocks = extract_blocks(A, block_size, block_size)
+    return np.concatenate([vecd(A_blocks[i][j]) for j in range(n) for i in range(n)])
+
+def unvecdb(v, block_size):
+    """
+    Inverse of block diagonal vectorization. Reshapes a vector back into a matrix with specified block diagonal structure.
+
+    Parameters
+    ----------
+    v : np.ndarray or list
+        The vector to be converted into a matrix.
+    block_size: list of int
+        The height/width of each block (square). len(block_size) is the number of blocks.
+
+    Returns
+    -------
+    np.ndarray
+        The matrix of the specified block diagonal structure.
+    """
+    n = len(block_size)
+    A_blocks = [[None for j in range(n)] for i in range(n)]
+    
+    idx = 0
+    for j in range(n):
+        for i in range(n):
+            N = block_size[i] # only diagonal elements, hence only N elements per block
+            A_blocks[i][j] = unvecd(v[idx:idx+N])
+            idx += N
+
+    return np.block(A_blocks)
 
 def kron(A, B):
     """

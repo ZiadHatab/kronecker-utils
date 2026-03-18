@@ -1,13 +1,21 @@
 # Matrix Vectorization and Kronecker Products
 
-`kronutils.py` is a pure-NumPy utility library for matrix vectorization operators and Kronecker-product variants. It provides implementations of the standard column-wise vectorization (`vec`), half-vectorization (`vech`), diagonal vectorization (`vecd`), and block vectorization (`vecb`), together with the Kronecker, Khatri-Rao, Hadamard, block Kronecker (Tracy–Singh), and block Khatri-Rao matrix products, as well as the block diagonal (direct sum) construction and the commutation matrix. All functions accept NumPy arrays or nested Python lists.
+`kronutils.py` is a pure-NumPy utility library for matrix vectorization operators and Kronecker products. All functions accept NumPy arrays or nested Python lists.
 
 | Function | Description |
 |---|---|
 | `vec(A)` | Column-wise vectorization |
+| `unvec(v, shape)` | Inverse of column-wise vectorization |
 | `vech(A)` | Half-vectorization (lower triangle, square matrices only) |
+| `unvech(v, N)` | Inverse of half-vectorization (reconstructs symmetric matrix) |
 | `vecd(A)` | Diagonal vectorization |
+| `unvecd(v)` | Inverse of diagonal vectorization |
 | `vecb(A, block_size_row, block_size_col)` | Block vectorization |
+| `unvecb(v, block_size_row, block_size_col)` | Inverse of block vectorization |
+| `vecdb(A, block_size)` | Block diagonal vectorization |
+| `unvecdb(v, block_size)` | Inverse of block diagonal vectorization |
+| `extract_blocks(A, block_size_row, block_size_col)` | Extract all blocks into a 2D list |
+| `extract_diag_blocks(A, block_size_row, block_size_col)` | Extract diagonal blocks into a list |
 | `kron(A, B)` | Kronecker product |
 | `khatri(A, B)` | Khatri-Rao column-wise product |
 | `hadamard(A, B)` | Hadamard (element-wise) product |
@@ -29,7 +37,11 @@ python -m pip install numpy -U
 
 ```python
 import numpy as np
-from kronutils import vec, vech, kron, khatri, hadamard, block_kron, commutation_matrix
+from kronutils import (vec, unvec, vech, unvech, vecd, unvecd,
+                       vecb, unvecb, vecdb, unvecdb,
+                       extract_blocks, extract_diag_blocks,
+                       kron, khatri, hadamard, block_kron, block_khatri,
+                       block_diag, commutation_matrix)
 
 A = np.array([[1, 2],
               [3, 4]])
@@ -38,12 +50,16 @@ B = np.array([[5, 6],
               [7, 8]])
 
 # Column-wise vectorization
-print(vec(A))
-# [1 3 2 4]
+print(vec(A))           # [1 3 2 4]
+print(unvec(vec(A), (2, 2)))  # recovers A
 
 # Half-vectorization (lower triangle)
-print(vech(A))
-# [1 3 4]
+print(vech(A))          # [1 3 4]
+print(unvech(vech(A), 2))     # recovers A (symmetric)
+
+# Diagonal vectorization
+print(vecd(A))          # [1 4]
+print(unvecd(vecd(A)))  # [[1 0], [0 4]]
 
 # Kronecker product
 print(kron(A, B))
@@ -66,8 +82,28 @@ print(hadamard(A, B))
 
 # Commutation matrix: vec(A) = K @ vec(A.T)
 K = commutation_matrix(2, 2)
-print(K@vec(A.T))
-# [1 3 2 4]  ==  vec(A)
+print(K @ vec(A.T))     # [1 3 2 4]  ==  vec(A)
+```
+
+**Block vectorization:**
+
+```python
+C = np.array([[1, 2, 3],
+              [4, 5, 6],
+              [7, 8, 9]])
+
+block_size_row = [2, 1]
+block_size_col = [2, 1]
+
+v = vecb(C, block_size_row, block_size_col)
+print(unvecb(v, block_size_row, block_size_col))  # recovers C
+
+# Extract blocks
+blocks = extract_blocks(C, block_size_row, block_size_col)
+# blocks[0][0] == C[0:2, 0:2], blocks[0][1] == C[0:2, 2:3], etc.
+
+diag_blocks = extract_diag_blocks(C, block_size_row, block_size_col)
+# diag_blocks[0] == C[0:2, 0:2],  diag_blocks[1] == C[2:3, 2:3]
 ```
 
 **Block Kronecker (Tracy–Singh) product:**
