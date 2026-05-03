@@ -205,3 +205,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# AI tools
+.claude/
+.aider*
+.cursor/
+.cursorrules
+.windsurf/
+.continue/
+.codeium/
+.github/copilot/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.aiderignore

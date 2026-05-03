@@ -26,18 +26,22 @@ def block_diag(*matrices):
     >>> A = np.array([[1, 2], [3, 4]])
     >>> B = np.array([[5, 6], [7, 8]])
     >>> block_diag(A, B)
-    array([ [1, 2, 0, 0],
-            [3, 4, 0, 0],
-            [0, 0, 5, 6],
-            [0, 0, 7, 8]])
-    
+    array([[1, 2, 0, 0],
+           [3, 4, 0, 0],
+           [0, 0, 5, 6],
+           [0, 0, 7, 8]])
+
     References
     ----------
     - https://en.wikipedia.org/wiki/Direct_sum
     """
+    if not matrices:
+        return np.zeros((0, 0))
     matrices = [np.atleast_2d(mat) for mat in matrices]
+    common_dtype = np.result_type(*[m.dtype for m in matrices])
     return np.block([
-        [matrices[j] if i == j else np.zeros((matrices[i].shape[0], matrices[j].shape[1]), dtype=matrices[i].dtype)
+        [matrices[j].astype(common_dtype, copy=False) if i == j
+         else np.zeros((matrices[i].shape[0], matrices[j].shape[1]), dtype=common_dtype)
          for j in range(len(matrices))]
         for i in range(len(matrices))
     ])
@@ -172,10 +176,12 @@ def vech(A):
     Communications in Statistics - Theory and Methods, vol. 49, no. 10, pp. 2321–2338, 2020, 
     doi: 10.1080/03610926.2019.1570265.
     """
-    A = np.atleast_2d(A)    
+    A = np.atleast_2d(A)
     if A.shape[0] != A.shape[1]:
-        raise ValueError(f"vech requires a square matrix, but got shape {A.shape}.")    
-    return A[np.tril_indices_from(A)]
+        raise ValueError(f"vech requires a square matrix, but got shape {A.shape}.")
+    i, j = np.tril_indices_from(A)
+    order = np.lexsort((i, j))  # column-major: primary key is column j, secondary is row i
+    return A[i[order], j[order]]
 
 def unvech(v, N):
     """
@@ -205,9 +211,10 @@ def unvech(v, N):
     """
     v = np.atleast_1d(v)
     A = np.zeros((N, N), dtype=v.dtype)
-    tril_indices = np.tril_indices(N)
-    A[tril_indices] = v
-    A = A + A.T - np.diag(vecd(A))  # Make symmetric by adding transpose and removing double-counted diagonal
+    i, j = np.tril_indices(N)
+    order = np.lexsort((i, j))  # column-major: must match the ordering used in vech
+    A[i[order], j[order]] = v
+    A = A + A.T - np.diag(vecd(A))  # symmetrize, removing double-counted diagonal
     return A
 
 def vecd(A):
@@ -335,50 +342,65 @@ def unvecb(v, block_size_row, block_size_col):
 
 def vecdb(A, block_size):
     """
-    Block diagonal vectorization of a matrix.
+    Block diagonal vectorization of a matrix with uniform square blocks.
 
     Parameters
     ----------
     A : np.ndarray or list
-        The matrix to be block diagonal vectorized.
-    block_size: list of int
-        The height/width of each block (square). len(block_size) is the number of blocks.
-    
+        The matrix to be block diagonal vectorized. Must be square, with side length
+        divisible by block_size.
+    block_size : int
+        The height/width of each (uniform, square) block.
+
     Returns
     -------
     np.ndarray
         The block diagonal vectorized form of the input matrix.
     """
     A = np.atleast_2d(A)
-    n = len(block_size)
-    A_blocks = extract_blocks(A, block_size, block_size)
+    if A.shape[0] != A.shape[1]:
+        raise ValueError(f"vecdb requires a square matrix, but got shape {A.shape}.")
+    if A.shape[0] % block_size != 0:
+        raise ValueError(f"Matrix size {A.shape[0]} must be divisible by block_size {block_size}.")
+    n = A.shape[0] // block_size
+    sizes = [block_size] * n
+    A_blocks = extract_blocks(A, sizes, sizes)
     return np.concatenate([vecd(A_blocks[i][j]) for j in range(n) for i in range(n)])
 
 def unvecdb(v, block_size):
     """
-    Inverse of block diagonal vectorization. Reshapes a vector back into a matrix with specified block diagonal structure.
+    Inverse of block diagonal vectorization. Reshapes a vector back into a matrix
+    with uniform square block diagonal structure.
+
+    The number of blocks is inferred from len(v): a vecdb result has length
+    num_blocks**2 * block_size.
 
     Parameters
     ----------
     v : np.ndarray or list
         The vector to be converted into a matrix.
-    block_size: list of int
-        The height/width of each block (square). len(block_size) is the number of blocks.
+    block_size : int
+        The height/width of each (uniform, square) block.
 
     Returns
     -------
     np.ndarray
         The matrix of the specified block diagonal structure.
     """
-    n = len(block_size)
-    A_blocks = [[None for j in range(n)] for i in range(n)]
-    
+    v = np.atleast_1d(v)
+    if len(v) % block_size != 0:
+        raise ValueError(f"len(v)={len(v)} must be divisible by block_size={block_size}.")
+    n_squared = len(v) // block_size
+    n = int(round(np.sqrt(n_squared)))
+    if n * n != n_squared:
+        raise ValueError(f"len(v)/block_size = {n_squared} is not a perfect square; cannot infer num_blocks.")
+
+    A_blocks = [[None for _ in range(n)] for _ in range(n)]
     idx = 0
     for j in range(n):
         for i in range(n):
-            N = block_size[i] # only diagonal elements, hence only N elements per block
-            A_blocks[i][j] = unvecd(v[idx:idx+N])
-            idx += N
+            A_blocks[i][j] = unvecd(v[idx:idx+block_size])
+            idx += block_size
 
     return np.block(A_blocks)
 
@@ -446,7 +468,8 @@ def khatri(A, B):
     B = np.atleast_2d(B)
     if A.shape[1] != B.shape[1]:
         raise ValueError("The number of columns of A and B must be the same.")
-    return np.vstack([np.kron(a, b) for a, b in zip(A.T, B.T)]).T
+    # broadcast outer product per column, then stack: shape (rows_A * rows_B, cols)
+    return (A[:, None, :] * B[None, :, :]).reshape(-1, A.shape[1])
 
 def hadamard(A, B):
     """
@@ -571,19 +594,20 @@ def block_khatri(A, B, A_block_size_row, A_block_size_col, B_block_size_row, B_b
 
 def commutation_matrix(m, n):
     """
-    Commutation matrix of size m*n.
+    Commutation matrix of size mn x mn.
+    Satisfies K @ vec(A) = vec(A.T) for any m x n matrix A.
 
     Parameters
     ----------
     m : int
-        Number of block rows.
+        Number of rows of the matrix that K acts on.
     n : int
-        Number of block columns.
-    
+        Number of columns of the matrix that K acts on.
+
     Returns
     -------
     np.ndarray
-        The commutation matrix of size m*n.
+        The commutation matrix of shape (mn, mn).
     
     References
     ----------

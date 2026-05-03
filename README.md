@@ -19,8 +19,8 @@
 | `kron(A, B)` | Kronecker product |
 | `khatri(A, B)` | Khatri-Rao column-wise product |
 | `hadamard(A, B)` | Hadamard (element-wise) product |
-| `block_kron(A, B, ...)` | Block Kronecker product (Tracy–Singh product) |
-| `block_khatri(A, B, ...)` | Block Khatri-Rao product |
+| `block_kron(A, B, A_block_size_row, A_block_size_col, B_block_size_row, B_block_size_col)` | Block Kronecker product (Tracy–Singh product) |
+| `block_khatri(A, B, A_block_size_row, A_block_size_col, B_block_size_row, B_block_size_col)` | Block Khatri-Rao product (requires equal column-block widths) |
 | `block_diag(*matrices)` | Block diagonal matrix (direct sum) |
 | `commutation_matrix(m, n)` | Commutation matrix of size *mn × mn* |
 
@@ -37,11 +37,7 @@ python -m pip install numpy -U
 
 ```python
 import numpy as np
-from kronutils import (vec, unvec, vech, unvech, vecd, unvecd,
-                       vecb, unvecb, vecdb, unvecdb,
-                       extract_blocks, extract_diag_blocks,
-                       kron, khatri, hadamard, block_kron, block_khatri,
-                       block_diag, commutation_matrix)
+import kronutils as ku  # this imports `kronutils.py`
 
 A = np.array([[1, 2],
               [3, 4]])
@@ -50,39 +46,41 @@ B = np.array([[5, 6],
               [7, 8]])
 
 # Column-wise vectorization
-print(vec(A))           # [1 3 2 4]
-print(unvec(vec(A), (2, 2)))  # recovers A
+print(ku.vec(A))                  # [1 3 2 4]
+print(ku.unvec(ku.vec(A), (2, 2)))  # recovers A
 
-# Half-vectorization (lower triangle)
-print(vech(A))          # [1 3 4]
-print(unvech(vech(A), 2))     # recovers A (symmetric)
+# Half-vectorization (lower triangle, column-major)
+S = np.array([[1, 3],
+              [3, 4]])    # symmetric
+print(ku.vech(S))                 # [1 3 4]
+print(ku.unvech(ku.vech(S), 2))   # recovers S
 
 # Diagonal vectorization
-print(vecd(A))          # [1 4]
-print(unvecd(vecd(A)))  # [[1 0], [0 4]]
+print(ku.vecd(A))                 # [1 4]
+print(ku.unvecd(ku.vecd(A)))      # [[1 0], [0 4]]
 
 # Kronecker product
-print(kron(A, B))
+print(ku.kron(A, B))
 # [[ 5  6 10 12]
 #  [ 7  8 14 16]
 #  [15 18 20 24]
 #  [21 24 28 32]]
 
 # Khatri-Rao product
-print(khatri(A, B))
+print(ku.khatri(A, B))
 # [[ 5 12]
 #  [ 7 16]
 #  [15 24]
 #  [21 32]]
 
 # Hadamard product
-print(hadamard(A, B))
+print(ku.hadamard(A, B))
 # [[ 5 12]
 #  [21 32]]
 
-# Commutation matrix: vec(A) = K @ vec(A.T)
-K = commutation_matrix(2, 2)
-print(K @ vec(A.T))     # [1 3 2 4]  ==  vec(A)
+# Commutation matrix: K @ vec(M) = vec(M.T) for any 2x2 matrix M
+K = ku.commutation_matrix(2, 2)
+print(K @ ku.vec(A))              # [1 2 3 4]  ==  vec(A.T)
 ```
 
 **Block vectorization:**
@@ -95,34 +93,32 @@ C = np.array([[1, 2, 3],
 block_size_row = [2, 1]
 block_size_col = [2, 1]
 
-v = vecb(C, block_size_row, block_size_col)
-print(unvecb(v, block_size_row, block_size_col))  # recovers C
+v = ku.vecb(C, block_size_row, block_size_col)
+print(ku.unvecb(v, block_size_row, block_size_col))  # recovers C
 
 # Extract blocks
-blocks = extract_blocks(C, block_size_row, block_size_col)
+blocks = ku.extract_blocks(C, block_size_row, block_size_col)
 # blocks[0][0] == C[0:2, 0:2], blocks[0][1] == C[0:2, 2:3], etc.
 
-diag_blocks = extract_diag_blocks(C, block_size_row, block_size_col)
+diag_blocks = ku.extract_diag_blocks(C, block_size_row, block_size_col)
 # diag_blocks[0] == C[0:2, 0:2],  diag_blocks[1] == C[2:3, 2:3]
 ```
 
 **Block Kronecker (Tracy–Singh) product:**
 
 ```python
-from kronutils import block_kron
-
 A = np.array([[1, 2],
               [3, 4],
               [5, 6],
-              [7, 8]])   # 4×2, blocked as [2,2] × [2]
+              [7, 8]])   # 4×2, row blocks [2, 2], col blocks [2]
 
 B = np.array([[1, 0, 5],
               [2, 1, 6],
-              [3, 4, 7]])  # 3×3, blocked as [2,1] × [2,1]
+              [3, 4, 7]])  # 3×3, row blocks [2, 1], col blocks [2, 1]
 
-result = block_kron(A, B,
-                    A_block_size_row=[2, 2], A_block_size_col=[2],
-                    B_block_size_row=[2, 1], B_block_size_col=[2, 1])
+result = ku.block_kron(A, B,
+                       A_block_size_row=[2, 2], A_block_size_col=[2],
+                       B_block_size_row=[2, 1], B_block_size_col=[2, 1])
 print(result)
 ```
 
